@@ -20,6 +20,16 @@ document.addEventListener('DOMContentLoaded', function () {
         essentialLoad: []
     };
     
+    // Daily summary data
+    let dailySummary = {
+        pv: 0,
+        batCharge: 0,
+        batDischarge: 0,
+        load: 0,
+        grid: 0,
+        essentialLoad: 0
+    };
+    
     // --- UI Elements ---
     const connectBtn = document.getElementById('connectBtn');
     const deviceIdInput = document.getElementById('deviceId');
@@ -30,6 +40,18 @@ document.addEventListener('DOMContentLoaded', function () {
     const loading = document.getElementById('loading');
     const errorMessage = document.getElementById('errorMessage');
     const errorText = document.getElementById('errorText');
+    
+    /**
+     * Formats a date object to YYYY-MM-DD string format for input fields
+     * @param {Date} date - Date object to format
+     * @returns {string} Formatted date string in YYYY-MM-DD format
+     */
+    function formatDate(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0'); // Months are 0-based
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
     
     // Set up today's date as default
     const today = new Date();
@@ -427,35 +449,103 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     
     // --- Chart Functions ---
+    /**
+     * Safely destroys all chart instances to prevent "Canvas is already in use" errors
+     * This ensures proper cleanup of Chart.js instances before creating new ones
+     */
+    function destroyCharts() {
+        // Destroy each chart instance if it exists
+        if (pvChart) {
+            pvChart.destroy();
+            pvChart = null;
+        }
+        if (batChart) {
+            batChart.destroy();
+            batChart = null;
+        }
+        if (loadChart) {
+            loadChart.destroy();
+            loadChart = null;
+        }
+        if (gridChart) {
+            gridChart.destroy();
+            gridChart = null;
+        }
+        if (essentialChart) {
+            essentialChart.destroy();
+            essentialChart = null;
+        }
+        
+        // Clear any cached data to prevent memory leaks
+        if (Chart.helpers && Chart.helpers.each) {
+            Chart.helpers.each(Chart.instances || [], function(instance) {
+                if (instance && typeof instance.destroy === 'function') {
+                    instance.destroy();
+                }
+            });
+        }
+    }
+
     function initializeCharts() {
+        // Destroy existing charts first
+        destroyCharts();
+        
         const chartSection = document.getElementById('chart-section');
         chartSection.classList.remove('hidden');
+        
+        try {
+        
+        // Configure Chart.js defaults
+        Chart.defaults.global = Chart.defaults.global || {};
+        Chart.defaults.global.defaultFontFamily = "'Inter', 'Segoe UI', 'Helvetica', 'Arial', sans-serif";
+        Chart.defaults.global.defaultFontColor = '#64748b';
         
         // Common chart options
         const commonOptions = {
             responsive: true,
             maintainAspectRatio: false,
-            interaction: {
-                mode: 'index',
-                intersect: false,
+            elements: {
+                point: {
+                    radius: 0, // Hide points
+                    hoverRadius: 4 // Show points on hover
+                },
+                line: {
+                    borderWidth: 2, // Thinner line
+                    tension: 0.2 // Less curve for clearer visualization
+                }
             },
             plugins: {
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    backgroundColor: 'rgba(50, 50, 50, 0.9)',
+                    titleFont: {
+                        size: 12
+                    },
+                    bodyFont: {
+                        size: 11
+                    },
+                    padding: 8,
+                    callbacks: {
+                        title: function(tooltipItems) {
+                            return tooltipItems[0].xLabel;
+                        },
+                        label: function(tooltipItem, data) {
+                            return data.datasets[tooltipItem.datasetIndex].label + ': ' + tooltipItem.yLabel + ' W';
+                        }
+                    }
+                },
                 legend: {
                     position: 'top',
                     labels: {
-                        usePointStyle: true,
-                        boxWidth: 6
+                        boxWidth: 12,
+                        padding: 10,
+                        fontSize: 11
                     }
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                    padding: 10,
-                    cornerRadius: 4,
-                    boxPadding: 3
                 }
             },
             scales: {
-                x: {
+                xAxes: [{
                     type: 'time',
                     time: {
                         unit: 'hour',
@@ -464,127 +554,216 @@ document.addEventListener('DOMContentLoaded', function () {
                         },
                         tooltipFormat: 'HH:mm'
                     },
-                    title: {
+                    gridLines: {
                         display: true,
-                        text: 'Time'
+                        color: 'rgba(200, 200, 200, 0.2)'
+                    },
+                    ticks: {
+                        maxRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: 12,
+                        // Fix for deprecated time.min/max - use ticks.min/max instead
+                        min: function() {
+                            const date = new Date(dateInput.value);
+                            date.setHours(0, 0, 0, 0);
+                            return date;
+                        },
+                        max: function() {
+                            const date = new Date(dateInput.value);
+                            date.setHours(23, 59, 59, 999);
+                            return date;
+                        }
                     }
-                },
-                y: {
-                    beginAtZero: true,
-                    title: {
+                }],
+                yAxes: [{
+                    gridLines: {
                         display: true,
-                        text: 'Power (W)'
+                        color: 'rgba(200, 200, 200, 0.2)'
+                    },
+                    ticks: {
+                        beginAtZero: true,
+                        // Use k suffix for thousands
+                        callback: function(value) {
+                            return formatYAxisLabel(value);
+                        }
+                    },
+                    scaleLabel: {
+                        display: true,
+                        labelString: 'Watt',
+                        fontSize: 11
+                    }
+                }]
+            },
+            legend: {
+                display: true,
+                position: 'top'
+            },
+            tooltips: {
+                mode: 'index',
+                intersect: false,
+                callbacks: {
+                    label: function(tooltipItem, data) {
+                        const label = data.datasets[tooltipItem.datasetIndex].label || '';
+                        const value = tooltipItem.yLabel;
+                        return label + ': ' + value + ' W';
+                    },
+                    title: function(tooltipItems) {
+                        return moment(tooltipItems[0].xLabel).format('HH:mm');
                     }
                 }
             },
-            elements: {
-                line: {
-                    tension: 0.2 // Smoother curves
-                },
-                point: {
-                    radius: 0, // Hide points
-                    hitRadius: 10 // But keep hit area for tooltips
-                }
+            hover: {
+                mode: 'nearest',
+                intersect: true
             }
         };
         
-        // Create PV Chart
-        pvChart = new Chart(document.getElementById('pvChart'), {
+        // Initialize PV Chart
+        const pvCtx = document.getElementById('pvChart').getContext('2d');
+        pvChart = new Chart(pvCtx, {
             type: 'line',
             data: {
                 datasets: [{
-                    label: 'PV Production',
+                    label: 'PV Production (W)',
                     data: [],
-                    borderColor: '#EAB308', // Yellow
-                    backgroundColor: 'rgba(234, 179, 8, 0.2)',
+                    backgroundColor: 'rgba(255, 193, 7, 0.2)',
+                    borderColor: 'rgb(255, 193, 7)',
                     fill: true
                 }]
             },
-            options: commonOptions
+            options: {
+                ...commonOptions,
+                title: {
+                    display: true,
+                    text: 'Solar Production'
+                }
+            }
         });
         
-        // Create Battery Chart
-        batChart = new Chart(document.getElementById('batChart'), {
+        // Initialize Battery Chart
+        const batCtx = document.getElementById('batChart').getContext('2d');
+        batChart = new Chart(batCtx, {
             type: 'line',
             data: {
-                datasets: [{
-                    label: 'Charging',
-                    data: [],
-                    borderColor: '#22C55E', // Green
-                    backgroundColor: 'rgba(34, 197, 94, 0.2)',
-                    fill: true
-                }, {
-                    label: 'Discharging',
-                    data: [],
-                    borderColor: '#EF4444', // Red
-                    backgroundColor: 'rgba(239, 68, 68, 0.2)',
-                    fill: true
-                }]
+                datasets: [
+                    {
+                        label: 'Charging (W)',
+                        data: [],
+                        backgroundColor: 'rgba(40, 167, 69, 0.2)',
+                        borderColor: 'rgb(40, 167, 69)',
+                        fill: true
+                    },
+                    {
+                        label: 'Discharging (W)',
+                        data: [],
+                        backgroundColor: 'rgba(220, 53, 69, 0.2)',
+                        borderColor: 'rgb(220, 53, 69)',
+                        fill: true
+                    }
+                ]
             },
-            options: commonOptions
+            options: {
+                ...commonOptions,
+                title: {
+                    display: true,
+                    text: 'Battery Power Flow'
+                }
+            }
         });
         
-        // Create Load Chart
-        loadChart = new Chart(document.getElementById('loadChart'), {
+        // Initialize Load Chart
+        const loadCtx = document.getElementById('loadChart').getContext('2d');
+        loadChart = new Chart(loadCtx, {
             type: 'line',
             data: {
                 datasets: [{
-                    label: 'Home Load',
+                    label: 'Load (W)',
                     data: [],
-                    borderColor: '#3B82F6', // Blue
-                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                    backgroundColor: 'rgba(0, 123, 255, 0.2)',
+                    borderColor: 'rgb(0, 123, 255)',
                     fill: true
                 }]
             },
-            options: commonOptions
+            options: {
+                ...commonOptions,
+                title: {
+                    display: true,
+                    text: 'Total Consumption'
+                }
+            }
         });
         
-        // Create Grid Chart
-        gridChart = new Chart(document.getElementById('gridChart'), {
+        // Initialize Grid Chart
+        const gridCtx = document.getElementById('gridChart').getContext('2d');
+        gridChart = new Chart(gridCtx, {
             type: 'line',
             data: {
                 datasets: [{
-                    label: 'Grid Usage',
+                    label: 'Grid (W)',
                     data: [],
-                    borderColor: '#8B5CF6', // Purple
-                    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+                    backgroundColor: 'rgba(111, 66, 193, 0.2)',
+                    borderColor: 'rgb(111, 66, 193)',
                     fill: true
                 }]
             },
-            options: commonOptions
+            options: {
+                ...commonOptions,
+                title: {
+                    display: true,
+                    text: 'Grid Import/Export'
+                }
+            }
         });
         
-        // Create Essential Load Chart
-        essentialChart = new Chart(document.getElementById('essentialChart'), {
+        // Initialize Essential Load Chart
+        const essentialCtx = document.getElementById('essentialChart').getContext('2d');
+        essentialChart = new Chart(essentialCtx, {
             type: 'line',
             data: {
                 datasets: [{
-                    label: 'Essential Load',
+                    label: 'Essential Load (W)',
                     data: [],
-                    borderColor: '#6B7280', // Gray
-                    backgroundColor: 'rgba(107, 114, 128, 0.2)',
+                    backgroundColor: 'rgba(108, 117, 125, 0.2)',
+                    borderColor: 'rgb(108, 117, 125)',
                     fill: true
                 }]
             },
-            options: commonOptions
+            options: {
+                ...commonOptions,
+                title: {
+                    display: true,
+                    text: 'Essential Load'
+                }
+            }
         });
+        
+        console.log('All charts initialized successfully');
+    } catch (error) {
+        console.error('Error initializing charts:', error);
     }
-    
-    function updateChartsWithRealtimeData(data) {
-        // Initialize charts if they don't exist yet
-        if (!pvChart) {
+}
+
+/**
+ * Updates all charts with real-time data from the device
+ * @param {Object} data - Parsed device data
+ */
+function updateChartsWithRealtimeData(data) {
+    try {
+        // Check if any chart instance is invalid or missing
+        if (!pvChart || !batChart || !loadChart || !gridChart || !essentialChart) {
+            console.log('Initializing charts - some chart instances were missing');
             initializeCharts();
         }
         
         const now = new Date();
         
-        // Add data points to historical data
-        historicalData.pv.push({ x: now, y: data.pvTotalPower });
-        historicalData.batCharge.push({ x: now, y: data.batteryStatus === 'Charging' ? data.batteryValue : 0 });
-        historicalData.batDischarge.push({ x: now, y: data.batteryStatus === 'Discharging' ? data.batteryValue : 0 });
-        historicalData.load.push({ x: now, y: data.loadValue });
-        historicalData.grid.push({ x: now, y: Math.abs(data.gridValue) });
-        historicalData.essentialLoad.push({ x: now, y: data.loadValue }); // Assuming essential load is same as total load
+        // Add data points to historical data - using t/y format for Chart.js v2.9.4
+        historicalData.pv.push({ t: now, y: data.pvTotalPower });
+        historicalData.batCharge.push({ t: now, y: data.batteryStatus === 'Charging' ? data.batteryValue : 0 });
+        historicalData.batDischarge.push({ t: now, y: data.batteryStatus === 'Discharging' ? data.batteryValue : 0 });
+        historicalData.load.push({ t: now, y: data.loadValue });
+        historicalData.grid.push({ t: now, y: Math.abs(data.gridValue) });
+        historicalData.essentialLoad.push({ t: now, y: data.loadValue }); // Assuming essential load is same as total load
         
         // Limit data points to prevent memory issues (keep last 100 points)
         const maxDataPoints = 100;
@@ -608,13 +787,139 @@ document.addEventListener('DOMContentLoaded', function () {
         loadChart.update();
         gridChart.update();
         essentialChart.update();
+    } catch (error) {
+        console.error('Error updating charts:', error);
+        // Attempt recovery by reinitializing charts
+        try {
+            destroyCharts();
+            initializeCharts();
+        } catch (recoveryError) {
+            console.error('Failed to recover charts:', recoveryError);
+        }
+    }
+}
+    
+    /**
+     * Update charts with historical data for the entire day
+     * This function creates data points for the entire day (5-minute intervals)
+     */
+    function updateChartsWithHistoricalData() {
+        try {
+            // Check if any chart instance is invalid or missing
+            if (!pvChart || !batChart || !loadChart || !gridChart || !essentialChart) {
+                console.log('Initializing charts - some chart instances were missing');
+                initializeCharts();
+            }
+            
+            // Generate time labels for the entire day (5-minute intervals)
+            const timeLabels = generateTimeLabels();
+            
+            // Create empty data arrays with the same length as timeLabels
+            const emptyData = timeLabels.map(() => 0);
+            
+            // Create datasets for each chart
+            const datasets = {
+                pv: timeLabels.map((time, i) => ({ t: time, y: historicalData.pv[i] || 0 })),
+                batCharge: timeLabels.map((time, i) => ({ t: time, y: historicalData.batCharge[i] || 0 })),
+                batDischarge: timeLabels.map((time, i) => ({ t: time, y: historicalData.batDischarge[i] || 0 })),
+                load: timeLabels.map((time, i) => ({ t: time, y: historicalData.load[i] || 0 })),
+                grid: timeLabels.map((time, i) => ({ t: time, y: historicalData.grid[i] || 0 })),
+                essentialLoad: timeLabels.map((time, i) => ({ t: time, y: historicalData.essentialLoad[i] || 0 }))
+            };
+            
+            // Update charts
+            pvChart.data.datasets[0].data = datasets.pv;
+            batChart.data.datasets[0].data = datasets.batCharge;
+            batChart.data.datasets[1].data = datasets.batDischarge;
+            loadChart.data.datasets[0].data = datasets.load;
+            gridChart.data.datasets[0].data = datasets.grid;
+            essentialChart.data.datasets[0].data = datasets.essentialLoad;
+            
+            // Update all charts
+            pvChart.update();
+            batChart.update();
+            loadChart.update();
+            gridChart.update();
+            essentialChart.update();
+            
+            // Update summary statistics
+            updateSummaryStatistics();
+            
+        } catch (error) {
+            console.error('Error updating charts with historical data:', error);
+            // Attempt recovery by reinitializing charts
+            try {
+                destroyCharts();
+                initializeCharts();
+            } catch (recoveryError) {
+                console.error('Failed to recover charts:', recoveryError);
+            }
+        }
     }
     
-    // --- Date Navigation Functions ---
-    function formatDate(date) {
-        return date.toISOString().split('T')[0];
+    /**
+     * Update the summary statistics based on the historical data
+     */
+    function updateSummaryStatistics() {
+        // Calculate daily totals (in kW)
+        dailySummary.pv = calculateDailyTotal(historicalData.pv) / 10;
+        dailySummary.batCharge = calculateDailyTotal(historicalData.batCharge) / 10;
+        dailySummary.batDischarge = calculateDailyTotal(historicalData.batDischarge) / 10;
+        dailySummary.load = calculateDailyTotal(historicalData.load) / 10;
+        dailySummary.grid = calculateDailyTotal(historicalData.grid) / 10;
+        dailySummary.essentialLoad = calculateDailyTotal(historicalData.essentialLoad) / 10;
+        
+        // Update UI elements
+        document.getElementById('pv-total').textContent = dailySummary.pv.toFixed(1) + ' kW';
+        document.getElementById('bat-charge').textContent = dailySummary.batCharge.toFixed(1) + ' kW';
+        document.getElementById('bat-discharge').textContent = dailySummary.batDischarge.toFixed(1) + ' kW';
+        document.getElementById('load-total').textContent = dailySummary.load.toFixed(1) + ' kW';
+        document.getElementById('grid-total').textContent = dailySummary.grid.toFixed(1) + ' kW';
+        document.getElementById('essential-total').textContent = dailySummary.essentialLoad.toFixed(1) + ' kW';
+        
+        // Show summary stats section
+        document.getElementById('summaryStats').classList.remove('hidden');
     }
     
+    /**
+     * Calculate the daily total from an array of data points
+     * @param {Array} dataArray - Array of data points
+     * @returns {number} The daily total
+     */
+    function calculateDailyTotal(dataArray) {
+        return dataArray.reduce((sum, point) => sum + (typeof point === 'object' ? point.y : point), 0);
+    }
+    
+    /**
+     * Format number for y-axis (e.g., 3000 -> 3k)
+     * @param {number} value - The value to format
+     * @returns {string|number} Formatted value
+     */
+    function formatYAxisLabel(value) {
+        if (value >= 1000) {
+            return (value / 1000).toFixed(1) + 'k';
+        }
+        return value;
+    }
+
+    /**
+     * Generate time labels for x-axis (5-minute intervals for the entire day)
+     * @returns {Array} Array of time objects for Chart.js
+     */
+    function generateTimeLabels() {
+        const labels = [];
+        const selectedDate = new Date(dateInput.value);
+        
+        for (let hour = 0; hour < 24; hour++) {
+            for (let minute = 0; minute < 60; minute += 5) {
+                const timePoint = new Date(selectedDate);
+                timePoint.setHours(hour, minute, 0, 0);
+                labels.push(timePoint);
+            }
+        }
+        return labels;
+    }
+
     function changeDate(days) {
         const currentDate = new Date(dateInput.value);
         currentDate.setDate(currentDate.getDate() + days);
@@ -625,50 +930,99 @@ document.addEventListener('DOMContentLoaded', function () {
             fetchHistoricalData(currentDate, currentDeviceId);
         }
     }
-    
+
     function fetchHistoricalData(date, deviceId) {
-        // In a real implementation, this would fetch historical data from an API
-        // For now, we'll just show a message that this would fetch data for the selected date
-        console.log(`Would fetch historical data for ${deviceId} on ${formatDate(date)}`);
+        // Show loading indicator
+        loading.classList.remove('hidden');
         
-        // For demo purposes, generate some random historical data
-        generateDemoHistoricalData(date);
-    }
-    
-    function generateDemoHistoricalData(date) {
         // Clear existing historical data
         Object.keys(historicalData).forEach(key => {
             historicalData[key] = [];
         });
         
-        // Generate data points for every hour of the selected day
-        const startTime = new Date(date);
-        startTime.setHours(0, 0, 0, 0);
+        // Reset daily summary
+        Object.keys(dailySummary).forEach(key => {
+            dailySummary[key] = 0;
+        });
         
-        for (let hour = 0; hour < 24; hour++) {
-            const time = new Date(startTime);
-            time.setHours(hour);
-            
-            // Generate random values based on typical patterns
-            const pvValue = hour >= 6 && hour <= 18 ? Math.floor(Math.random() * 3000) * Math.sin((hour - 6) * Math.PI / 12) : 0;
-            const loadValue = 500 + Math.floor(Math.random() * 1000);
-            const gridValue = Math.floor(Math.random() * 1000);
-            const essentialValue = 300 + Math.floor(Math.random() * 500);
-            
-            // Battery tends to charge during day and discharge at night
-            const batChargeValue = hour >= 8 && hour <= 16 ? Math.floor(Math.random() * 1500) : 0;
-            const batDischargeValue = hour < 8 || hour > 16 ? Math.floor(Math.random() * 1000) : 0;
-            
-            historicalData.pv.push({ x: time, y: pvValue > 0 ? pvValue : 0 });
-            historicalData.batCharge.push({ x: time, y: batChargeValue });
-            historicalData.batDischarge.push({ x: time, y: batDischargeValue });
-            historicalData.load.push({ x: time, y: loadValue });
-            historicalData.grid.push({ x: time, y: gridValue });
-            historicalData.essentialLoad.push({ x: time, y: essentialValue });
-        }
+        // Generate data for the entire day (5-minute intervals)
+        const timeLabels = generateTimeLabels();
         
-        // Update charts if they exist
-        if (pvChart) {
+        // In a real implementation, this would fetch from an API using the MQTT broker
+        // For now, we'll simulate data for the entire day based on the MQTT configuration
+        console.log(`Fetching historical data for ${deviceId} on ${formatDate(date)}`);
+        
+        // Generate simulated data for the entire day
+        timeLabels.forEach((time, index) => {
+            // Create patterns that resemble real solar/battery/load data
+            const hour = time.getHours();
+            
+            // PV production follows a bell curve (daylight hours only)
+            let pvValue = 0;
+            if (hour >= 6 && hour <= 18) {
+                // Bell curve peaking at noon
+                const normalizedHour = (hour - 6) / 12; // 0 to 1 over daylight hours
+                pvValue = Math.sin(normalizedHour * Math.PI) * 3000 * (0.8 + Math.random() * 0.4);
+            }
+            
+            // Battery charging during daylight, discharging at night
+            let batChargeValue = 0;
+            let batDischargeValue = 0;
+            
+            if (hour >= 8 && hour <= 16 && pvValue > 1000) {
+                // Charging during peak sun hours when PV exceeds typical load
+                batChargeValue = Math.max(0, pvValue - 1000) * 0.7 * (0.8 + Math.random() * 0.4);
+                batDischargeValue = 0;
+            } else if (hour >= 18 || hour <= 6) {
+                // Discharging during evening/night
+                batChargeValue = 0;
+                batDischargeValue = 800 * (0.8 + Math.random() * 0.4);
+            }
+            
+            // Load is higher in morning and evening
+            let loadValue = 500; // Base load
+            if ((hour >= 6 && hour <= 9) || (hour >= 17 && hour <= 22)) {
+                // Peak usage times
+                loadValue = 1500 * (0.8 + Math.random() * 0.4);
+            } else {
+                loadValue = 800 * (0.8 + Math.random() * 0.4);
+            }
+            
+            // Grid usage fills the gap when PV + battery discharge < load
+            let gridValue = Math.max(0, loadValue - pvValue - batDischargeValue);
+            
+            // Essential load is a portion of total load
+            let essentialLoadValue = loadValue * 0.6 * (0.8 + Math.random() * 0.4);
+            
+            // Add data points
+            historicalData.pv.push({ t: new Date(time), y: Math.round(pvValue) });
+            historicalData.batCharge.push({ t: new Date(time), y: Math.round(batChargeValue) });
+            historicalData.batDischarge.push({ t: new Date(time), y: Math.round(batDischargeValue) });
+            historicalData.load.push({ t: new Date(time), y: Math.round(loadValue) });
+            historicalData.grid.push({ t: new Date(time), y: Math.round(gridValue) });
+            historicalData.essentialLoad.push({ t: new Date(time), y: Math.round(essentialLoadValue) });
+        });
+        
+        // Update charts with the new historical data
+        updateChartsWithHistoricalData();
+        
+        // Hide loading indicator
+        loading.classList.add('hidden');
+    }
+    
+    /**
+     * Updates charts with historical data
+     * Safely handles chart initialization and updates
+     */
+    function updateChartsWithHistoricalData() {
+        try {
+            // Check if any chart instance is invalid or missing
+            if (!pvChart || !batChart || !loadChart || !gridChart || !essentialChart) {
+                console.log('Initializing charts for historical data');
+                initializeCharts();
+            }
+            
+            // Update charts with historical data
             pvChart.data.datasets[0].data = historicalData.pv;
             batChart.data.datasets[0].data = historicalData.batCharge;
             batChart.data.datasets[1].data = historicalData.batDischarge;
@@ -682,9 +1036,15 @@ document.addEventListener('DOMContentLoaded', function () {
             loadChart.update();
             gridChart.update();
             essentialChart.update();
-        } else {
-            // Initialize charts if they don't exist yet
-            initializeCharts();
+        } catch (error) {
+            console.error('Error updating charts with historical data:', error);
+            // Attempt recovery by reinitializing charts
+            try {
+                destroyCharts();
+                initializeCharts();
+            } catch (recoveryError) {
+                console.error('Failed to recover charts:', recoveryError);
+            }
         }
     }
     
