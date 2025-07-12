@@ -49,7 +49,7 @@ jobs:
     
     - name: Minify HTML
       run: |
-        npx html-minifier-terser --collapse-whitespace --remove-comments --remove-optional-tags --remove-redundant-attributes --remove-script-type-attributes --remove-tag-whitespace --use-short-doctype --minify-css true --minify-js true StandAlone/index.html -o dist/index.html
+        npx html-minifier-terser --collapse-whitespace --remove-comments --remove-optional-tags --remove-redundant-attributes --remove-script-type-attributes --remove-tag-whitespace --use-short-doctype --minify-css true --minify-js true index.html -o dist/index.html
     
     - name: Copy license and readme
       run: |
