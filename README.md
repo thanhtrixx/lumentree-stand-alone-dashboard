@@ -417,6 +417,21 @@ The StandAlone application is automatically deployed using GitHub Actions:
 3. The optimized build is deployed to GitHub Pages in the `/production` subdirectory
 4. Access the production deployment at `https://[your-github-username].github.io/[repository-name]/production/`
 
+### Downloadable Artifacts
+
+The workflow also creates downloadable artifacts:
+
+1. After each successful build, a ZIP archive of the optimized application is created
+2. The artifact is available for download from the GitHub Actions workflow run page
+3. The artifact is retained for 30 days after the workflow run
+4. For tagged releases, the ZIP file is also attached to the GitHub Release
+
+To download the latest build:
+1. Go to the Actions tab in the GitHub repository
+2. Select the latest workflow run
+3. Scroll down to the "Artifacts" section
+4. Click on "lumentree-standalone" to download the ZIP file
+
 To manually deploy:
 
 ```bash
