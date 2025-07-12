@@ -112,20 +112,6 @@ StandAlone/
 
 ## Technical Details
 
-### MQTT Architecture
-
-The StandAlone Viewer implements a direct WebSocket MQTT client architecture that bypasses traditional server-side processing:
-
-```mermaid
-flowchart LR
-    A[StandAlone Viewer] <--WebSocket\n(Port 8083)--> B[MQTT Broker]
-    B <--Modbus\nProtocol--> C[Lumentree Inverter]
-    
-    style A fill:#f9f9f9,stroke:#333,stroke-width:2px
-    style B fill:#e6f7ff,stroke:#0066cc,stroke-width:2px
-    style C fill:#f5f5dc,stroke:#006400,stroke-width:2px
-```
-
 ### MQTT Configuration
 
 The application connects to the Lumentree MQTT broker with the following enterprise-grade configuration:
@@ -418,6 +404,32 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+## Deployment
+
+The StandAlone application is automatically deployed using GitHub Actions:
+
+1. Any push to the `main` branch will trigger the build workflow
+2. The workflow creates an optimized production build:
+   - Minifies JavaScript with Terser (reduces file size by ~70%)
+   - Minifies CSS with Clean CSS (reduces file size by ~30%)
+   - Minifies HTML (removes comments, whitespace, optional tags)
+3. The optimized build is deployed to GitHub Pages in the `/production` subdirectory
+4. Access the production deployment at `https://[your-github-username].github.io/[repository-name]/production/`
+
+To manually deploy:
+
+```bash
+# Clone the repository
+git clone https://github.com/[your-username]/[repository-name].git
+
+# Navigate to the repository
+cd [repository-name]
+
+# Deploy to GitHub Pages manually
+npm install -g gh-pages
+gh-pages -d StandAlone -o production
+```
 
 ## License
 
