@@ -1,0 +1,65 @@
+name: Build and Deploy StandAlone App
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'StandAlone/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'StandAlone/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    
+    - name: Install dependencies
+      run: npm install terser html-minifier-terser clean-css-cli --no-save
+        
+    - name: Create build directory
+      run: mkdir -p dist
+    
+    - name: Copy images and other assets
+      run: |
+        mkdir -p dist/images
+        cp -r StandAlone/images dist/
+        mkdir -p dist/css
+    
+    - name: Minify CSS
+      run: npx clean-css-cli StandAlone/css/style.css -o dist/css/style.css
+    
+    - name: Create JS directory
+      run: mkdir -p dist/js
+    
+    - name: Minify JavaScript
+      run: |
+        npx terser StandAlone/js/app.js --compress --mangle --output dist/js/app.js
+        npx terser StandAlone/js/mqtt-diagnostic.js --compress --mangle --output dist/js/mqtt-diagnostic.js
+    
+    - name: Minify HTML
+      run: |
+        npx html-minifier-terser --collapse-whitespace --remove-comments --remove-optional-tags --remove-redundant-attributes --remove-script-type-attributes --remove-tag-whitespace --use-short-doctype --minify-css true --minify-js true StandAlone/index.html -o dist/index.html
+    
+    - name: Copy license and readme
+      run: |
+        cp StandAlone/LICENSE dist/LICENSE
+        cp StandAlone/README.md dist/README.md
+        
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      if: github.ref == 'refs/heads/main'
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./dist
+        destination_dir: production
