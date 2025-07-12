@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', function () {
         publishTopicFormat: 'listenApp/{device_id}',
         useWebSocket: true,
         wsPath: '/mqtt',
-        useTLS: false,
+        useTLS: true,
         keepalive: 20,
         reconnectPeriod: 5000,
         connectTimeout: 10000
