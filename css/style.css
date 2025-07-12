@@ -1,0 +1,71 @@
+.chart-container {
+    position: relative;
+    height: 40vh; /* Reduced height for better mobile viewing */
+    width: 100%;
+    margin-bottom: 1.5rem;
+}
+
+@media (max-width: 640px) {
+    .chart-container {
+        height: 45vh;
+    }
+}
+
+.stat-card {
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+
+html {
+    scroll-behavior: smooth;
+}
+
+/* Custom tooltip styling */
+.chartjs-tooltip {
+    opacity: 0;
+    position: absolute;
+    background: rgba(30, 30, 30, 0.9);
+    color: white;
+    border-radius: 5px;
+    padding: 10px;
+    font-size: 12px;
+    pointer-events: none;
+    transform: translate(-50%, 0);
+    transition: opacity 0.2s ease;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* Style enhancements for chart legends */
+.chartjs-legend {
+    font-size: 11px !important;
+    padding: 5px !important;
+}
+
+/* Better visual of chart hovering states */
+canvas:hover {
+    cursor: crosshair;
+}
+
+
+/* Greyed out icons */
+.flow-item.inactive img {
+    opacity: 0.5;
+    filter: grayscale(100%);
+}
+
+/* Mobile responsiveness */
+@media (max-width: 640px) {
+    #realTimeFlow .grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    #realTimeFlow .flow-item {
+        height: auto;
+        min-height: 100px;
+    }
+}
